@@ -293,16 +293,17 @@
     var Drag = Base.extend({
         constructor: function(options){
             var defaults = {
-                placeClass : '',
+                placeClass : 'place-item',
                 dragClass : 'drag-container',
                 drop : '.drop',
                 drag : '.drag',
                 doCopy : false,
-                revert : false,
+                revert : true,
                 edge : 0,
+                limitContainer : '',
                 onStartDrag: function(e){},
                 onDrag: function(e){},
-                onstopDrag:function(e){}
+                onStopDrag:function(e){}
             };
             this.options = $.extend({}, defaults, options);
             this.elem = $$(this.options.drag);
@@ -400,7 +401,7 @@
             posLeft = data.target.offset().left - data.marginLeft;
             posTop = data.target.offset().top - data.marginTop;
 
-            if (this.options.doCopy){
+            if (!!this.options.placeClass || this.options.doCopy){
                 this.placeElem = '<div class=' + this.options.placeClass + '></div>';
                 this.placeElem = $(this.placeElem);
                 this.placeElem.css(this._copyPosition(target))
@@ -423,7 +424,6 @@
 
                     posLeft -= this.container.x;
                     posTop -= this.container.y;
-                    console.log(this.container);
                 }
             }
             console.log(posLeft, posTop)
@@ -436,7 +436,7 @@
             this.options.onStartDrag.call(target, e);
         },
         _dragMove: function(e){
-            //if (this._checkArea(e) == false){return}
+            if (this._checkArea(e) == false){return}
             var opt = this.options,
                 that = this,
                 mouse = this.mouse,
@@ -445,30 +445,27 @@
                 'left' : e.pageX - mouse.offsetX - this.container.x - data.marginLeft,
                 'top'  : e.pageY - mouse.offsetY - this.container.y - data.marginTop
             });
-            // mouse position last events
+
             mouse.lastX = mouse.nowX;
             mouse.lastY = mouse.nowY;
-            // mouse position this events
             mouse.nowX  = e.pageX;
             mouse.nowY  = e.pageY;
             // distance mouse moved between events
             mouse.distX = mouse.nowX - mouse.lastX;
             mouse.distY = mouse.nowY - mouse.lastY;
-            // direction mouse was moving
             mouse.lastDirX = mouse.dirX;
             mouse.lastDirY = mouse.dirY;
-            // direction mouse is now moving (on both axis)
+            // direction mouse is now moving
             mouse.dirX = mouse.distX === 0 ? 0 : mouse.distX > 0 ? 1 : -1;
             mouse.dirY = mouse.distY === 0 ? 0 : mouse.distY > 0 ? 1 : -1;
 
-            //TODO:max limit,lock X Y,filter accept
+            //TODO:lock X Y
             this.droppables.each(function(){
                 var dropObj = $(this),
                     dropOffset = dropObj.offset();
 
                 if (mouse.nowX > dropOffset.left && mouse.nowX < dropOffset.left + dropObj.outerWidth()
                         && mouse.nowY > dropOffset.top && mouse.nowY < dropOffset.top + dropObj.outerHeight()){
-                    //TODO store enter state
                     //trigger dragenter and dragover
                     if (!$(this).data('entered')){
                         $(this).data('entered',true);
@@ -512,7 +509,7 @@
                     dragContainer.remove();
                 }
             }
-            this.options.onDrag.call(this.dragData.target, e);
+            this.options.onStopDrag.call(this.dragData.target, e);
         },
         _copyPosition: function(obj){
             var cssProp = ['position', 'left', 'top', 'right', 'bottom', 'margin', 'padding', 'float'],
@@ -562,16 +559,19 @@
             return dropped;
         },
         _checkArea: function(e){
-            var offset = $('#container').offset();
-            var width = $('#container').outerWidth();
-            var height = $('#container').outerHeight();
-            var t = e.pageY - offset.top;
-            var r = offset.left + width - e.pageX;
-            var b = offset.top + height - e.pageY;
-            var l = e.pageX - offset.left;
-            console.log(offset)
-
-            return Math.min(t,r,b,l) > this.options.edge;
+            var container = $(this.options.limitContainer);
+            if (!container[0]){
+                return true;
+            }else{
+                var offset = container.offset(),
+                    width = container.outerWidth(),
+                    height = container.outerHeight(),
+                    t = e.pageY - offset.top,
+                    r = offset.left + width - e.pageX,
+                    b = offset.top + height - e.pageY
+                    l = e.pageX - offset.left;
+                return Math.min(t,r,b,l) > this.options.edge;
+            }
         }
     })
 
