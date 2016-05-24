@@ -188,7 +188,6 @@
         });
     };
 
-
     // widget base class
     var EVENT_KEY_SPLITTER = /^(\S+)\s*(.*)$/;
     var cidCounter = 0;
@@ -287,6 +286,294 @@
 
         return child;
     };
+
+
+    /* DRAG CLASS DEFINITION
+    * ====================== */
+    var Drag = Base.extend({
+        constructor: function(options){
+            var defaults = {
+                placeClass : '',
+                dragClass : 'drag-container',
+                drop : '.drop',
+                drag : '.drag',
+                doCopy : false,
+                revert : false,
+                edge : 0,
+                onStartDrag: function(e){},
+                onDrag: function(e){},
+                onstopDrag:function(e){}
+            };
+            this.options = $.extend({}, defaults, options);
+            this.elem = $$(this.options.drag);
+            if(!this.elem[0]){
+                throw new Error('Drag Error: drag element not specified');
+            }
+            this.droppables = $$(this.options.drop);
+            this.mouse = {
+                offsetX   : 0,
+                offsetY   : 0,
+                startX    : 0,
+                startY    : 0,
+                lastX     : 0,
+                lastY     : 0,
+                nowX      : 0,
+                nowY      : 0,
+                distX     : 0,
+                distY     : 0,
+                dirAx     : 0,
+                dirX      : 0,
+                dirY      : 0,
+                lastDirX  : 0,
+                lastDirY  : 0,
+                distAxX   : 0,
+                distAxY   : 0
+            };
+            this.container = {
+                x : 0,
+                y : 0
+            };
+            this.touch = false;
+            this.moving = false;
+
+            this.setup();
+        },
+        setup: function(){
+            var that = this;
+            var startEvent = function(e){
+                if (!!$(e.target).data('dropped')){
+                    console.log('item dropped');
+                    return;
+                }
+                that.touch = /^touch/.test(e.type);
+                if (that.touch && e.touches.length !== 1) {
+                    return;
+                }
+                that._dragStart(e.touches ? e.touches[0] : e)
+            }
+            var moveEvent = function(e){
+                if(that.moving){
+                    e.preventDefault();
+                    that._dragMove(e.touches ? e.touches[0] : e);
+                }
+            }
+            var stopEvent = function(e){
+                if (that.moving){
+                    e.preventDefault();
+                    that._dragStop(e.touches ? e.touches[0] : e);
+                }
+            }
+            if ('ontouchstart' in document) {
+                that.elem[0].addEventListener('touchstart', startEvent, false);
+                window.addEventListener('touchmove', moveEvent, false);
+                window.addEventListener('touchend', stopEvent, false);
+                window.addEventListener('touchcancel', stopEvent, false);
+            }
+
+            that.elem.on('mousedown', startEvent);
+            $(document).on('mousemove', moveEvent);
+            $(document).on('mouseup', stopEvent);
+        },
+        _dragStart: function(e){
+            var target = $(e.target),
+                posLeft = 0,posTop = 0,
+                position = target.position();
+
+            this.dragData = {
+                startPosition : target.css('position'),
+                startLeft: position.left,
+                startTop: position.top,
+                startX: e.pageX,
+                startY: e.pageY,
+                marginLeft: parseInt(target.css('marginLeft') || 0),
+                marginTop: parseInt(target.css('marginTop') || 0),
+                target: target,
+                parent: target.parent()
+            };
+            var mouse = this.mouse;
+            mouse.offsetX = e.offsetX !== undefined ? e.offsetX : e.pageX - target.offset().left;
+            mouse.offsetY = e.offsetY !== undefined ? e.offsetY : e.pageY - target.offset().top;
+            mouse.startX = mouse.lastX = e.pageX;
+            mouse.startY = mouse.lastY = e.pageY;
+
+            var data = this.dragData;
+            posLeft = data.target.offset().left - data.marginLeft;
+            posTop = data.target.offset().top - data.marginTop;
+
+            if (this.options.doCopy){
+                this.placeElem = '<div class=' + this.options.placeClass + '></div>';
+                this.placeElem = $(this.placeElem);
+                this.placeElem.css(this._copyPosition(target))
+            }
+
+            if (this.options.doCopy){
+                var dragItem = target;
+                this.dragElem = $(document.createElement('div')).addClass(this.options.dragClass);
+                dragItem.after(this.placeElem);
+                dragItem[0].parentNode.removeChild(dragItem[0]);
+                dragItem.appendTo(this.dragElem);
+
+                $(document.body).append(this.dragElem);
+            }else{
+                this.dragElem = target;
+                !!this.placeElem && this.dragElem.before(this.placeElem);
+                if (data.parent[0] != document.body){
+                    this.container.x = data.parent.offset().left;
+                    this.container.y = data.parent.offset().top;
+
+                    posLeft -= this.container.x;
+                    posTop -= this.container.y;
+                    console.log(this.container);
+                }
+            }
+            console.log(posLeft, posTop)
+            this.dragElem.css({
+                'position' : 'absolute',
+                'left' : posLeft,
+                'top'  : posTop
+            });
+            this.moving = true;
+            this.options.onStartDrag.call(target, e);
+        },
+        _dragMove: function(e){
+            //if (this._checkArea(e) == false){return}
+            var opt = this.options,
+                that = this,
+                mouse = this.mouse,
+                data = this.dragData;
+            this.dragElem.css({
+                'left' : e.pageX - mouse.offsetX - this.container.x - data.marginLeft,
+                'top'  : e.pageY - mouse.offsetY - this.container.y - data.marginTop
+            });
+            // mouse position last events
+            mouse.lastX = mouse.nowX;
+            mouse.lastY = mouse.nowY;
+            // mouse position this events
+            mouse.nowX  = e.pageX;
+            mouse.nowY  = e.pageY;
+            // distance mouse moved between events
+            mouse.distX = mouse.nowX - mouse.lastX;
+            mouse.distY = mouse.nowY - mouse.lastY;
+            // direction mouse was moving
+            mouse.lastDirX = mouse.dirX;
+            mouse.lastDirY = mouse.dirY;
+            // direction mouse is now moving (on both axis)
+            mouse.dirX = mouse.distX === 0 ? 0 : mouse.distX > 0 ? 1 : -1;
+            mouse.dirY = mouse.distY === 0 ? 0 : mouse.distY > 0 ? 1 : -1;
+
+            //TODO:max limit,lock X Y,filter accept
+            this.droppables.each(function(){
+                var dropObj = $(this),
+                    dropOffset = dropObj.offset();
+
+                if (mouse.nowX > dropOffset.left && mouse.nowX < dropOffset.left + dropObj.outerWidth()
+                        && mouse.nowY > dropOffset.top && mouse.nowY < dropOffset.top + dropObj.outerHeight()){
+                    //TODO store enter state
+                    //trigger dragenter and dragover
+                    if (!$(this).data('entered')){
+                        $(this).data('entered',true);
+                        that.trigger('dragenter',this);
+                    }
+                    that.trigger('dragover',this);
+                    //return true;
+                }else{
+                    //TODO trigger dragleave
+                    //return false;
+                    if(!!$(this).data('entered')){
+                        console.log('leave');
+                        that.trigger('dragleave',this);
+                        $(this).data('entered',false);
+                    }
+                }
+            })
+            this.options.onDrag.call(data.target, e);
+        },
+        _dragStop: function(e){
+            this.moving = false;
+            this.trigger('dragStop');
+            if (this.options.revert){
+                if (this._checkDrop()){
+                    this.trigger('drop');
+                    this.dragData.target.data('dropped',true);
+                }else{
+                    this._revert();
+                }
+            }else{
+                if (this._checkDrop()){
+                    this.trigger('drop');
+                    this.dragData.target.data('dropped',true);
+                }
+            }
+            if (!!this.placeElem){
+                var dragContainer = this.placeElem.closest('.' + this.options.dragClass);
+                if (!dragContainer[0]){
+                    this.placeElem.remove();
+                }else{
+                    dragContainer.remove();
+                }
+            }
+            this.options.onDrag.call(this.dragData.target, e);
+        },
+        _copyPosition: function(obj){
+            var cssProp = ['position', 'left', 'top', 'right', 'bottom', 'margin', 'padding', 'float'],
+                cssCopy = {};
+            for(var i = 0;i < cssProp.length;i++){
+                cssCopy[cssProp[i]] = obj.css(cssProp[i]);
+            }
+            return cssCopy;
+        },
+        _revert: function(){
+            //TODO use animate
+            if (!!this.options.doCopy){
+                var el = this.dragElem.children();
+                el[0].parentNode.removeChild(el[0]);
+                this.placeElem.replaceWith(el);
+                this.dragElem.remove();
+            }else{
+                if (!!this.placeElem){
+                    this.placeElem.remove();
+                }
+                this.dragElem.css({
+                    'position' : this.dragData.startPosition,
+                    'left' : this.dragData.startLeft,
+                    'top' : this.dragData.startTop
+                })
+            }
+        },
+        _checkDrop: function(){
+            //check drop area
+            var mouse = this.mouse,
+                opts = this.options,
+                that = this,
+                dropped = false;
+            this.droppables.each(function(){
+                var dropObj = $(this),
+                    dropOffset = dropObj.offset();
+
+                if (mouse.nowX > dropOffset.left && mouse.nowX < dropOffset.left + dropObj.outerWidth()
+                        && mouse.nowY > dropOffset.top && mouse.nowY < dropOffset.top + dropObj.outerHeight()){
+                    //TODO store enter state
+                    //trigger dragenter and dragover
+                    dropped = true;
+                    $(this).data('entered',false);
+                    //return true;
+                }
+            })
+            return dropped;
+        },
+        _checkArea: function(e){
+            var offset = $('#container').offset();
+            var width = $('#container').outerWidth();
+            var height = $('#container').outerHeight();
+            var t = e.pageY - offset.top;
+            var r = offset.left + width - e.pageX;
+            var b = offset.top + height - e.pageY;
+            var l = e.pageX - offset.left;
+            console.log(offset)
+
+            return Math.min(t,r,b,l) > this.options.edge;
+        }
+    })
 
     /* Widget CLASS DEFINITION
     * ====================== */
@@ -2327,6 +2614,8 @@
     pub.ContactSelect = ContactSelect;
     pub.TextComplete = TextComplete;
     pub.Tree = Tree;
+
+    pub.Drag = Drag;
 
     return pub;
 }));
