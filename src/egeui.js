@@ -1,9 +1,9 @@
-// EGEUI v0.1.6
+// EGEUI v0.1.7
 
 (function(global, factory){
     // Set up egeui appropriately for the environment.
     if (typeof define === 'function' && define.cmd) {
-        define("lib/egeui/0.1.6/egeui", ["jquery"], function(require, exports, module) {
+        define("lib/egeui/0.1.7/egeui", ["jquery"], function(require, exports, module) {
             var $ = require('jquery');
             module.exports = factory($);
         });
@@ -341,7 +341,6 @@
             var that = this;
             var startEvent = function(e){
                 if (!!$(e.target).data('dropped')){
-                    console.log('item dropped');
                     return;
                 }
                 that.touch = /^touch/.test(e.type);
@@ -425,7 +424,7 @@
                 dragItem.appendTo(this.dragElem);
 
                 $(document.body).append(this.dragElem);
-            }else{
+            } else {
                 this.dragElem = target;
                 !!this.placeElem && this.dragElem.before(this.placeElem);
                 if (data.parent[0] != document.body){
@@ -436,7 +435,6 @@
                     posTop -= this.container.y;
                 }
             }
-            console.log(posLeft, posTop)
             this.dragElem.css({
                 'position' : 'absolute',
                 'left' : posLeft,
@@ -484,11 +482,10 @@
                     }
                     that.trigger('dragover',this);
                     //return true;
-                }else{
+                } else {
                     //TODO trigger dragleave
                     //return false;
                     if(!!$(this).data('entered')){
-                        console.log('leave');
                         that.trigger('dragleave',this);
                         $(this).data('entered',false);
                     }
@@ -503,10 +500,10 @@
                 if (this._checkDrop()){
                     this.trigger('drop');
                     this.dragData.target.data('dropped',true);
-                }else{
+                } else {
                     this._revert();
                 }
-            }else{
+            } else {
                 if (this._checkDrop()){
                     this.trigger('drop');
                     this.dragData.target.data('dropped',true);
@@ -516,7 +513,7 @@
                 var dragContainer = this.placeElem.closest('.' + this.options.dragClass);
                 if (!dragContainer[0]){
                     this.placeElem.remove();
-                }else{
+                } else {
                     dragContainer.remove();
                 }
             }
@@ -537,7 +534,7 @@
                 el[0].parentNode.removeChild(el[0]);
                 this.placeElem.replaceWith(el);
                 this.dragElem.remove();
-            }else{
+            } else {
                 if (!!this.placeElem){
                     this.placeElem.remove();
                 }
@@ -570,7 +567,7 @@
             var container = $(this.options.limitContainer);
             if (!container[0]){
                 return true;
-            }else{
+            } else {
                 var offset = container.offset(),
                     width = container.outerWidth(),
                     height = container.outerHeight(),
@@ -2008,8 +2005,9 @@
         _nodeListTpl: '<ul class="node-list" data-role="nodes"></ul>',
         _nodeWrapTpl: '<li class="node" data-role="node"><div class="item" data-role="item"></div></li>',
         _switchTpl: '<i class="tree-switcher icon icon-tree-{{switch_class}}" data-role="switcher"></i>',
-        _checkboxTpl: '<i class="icon icon-checkbox" data-role="checkbox"></i>',
-
+        _checkboxTpl: '<i class="{{checkbox_class}}" data-role="checkbox"></i>',
+        _nodeIconTpl: '<i class="{{icon_class}}" data-role="node-icon"></i>',
+        _defaultField: ['open', 'checkboxDisabled', 'checked', 'isParent', 'async', 'halfCheck'],
         setup: function(){
             var defaults = {
                 nodeTpl: '<span class="name" data-role="name">{{name}}</span>',
@@ -2017,22 +2015,39 @@
                 nodeFields: [],
                 idField: 'id',
                 classPrefix: 'egeui-tree',
+                idPrefix: 'etn',
                 expandDepth: 0,
+                dataLocator: null,
+                isLeafField: null,
+                isOpenField: null,
+                isDisabledField: null,
                 async: {
                     enable: true,
                     type: 'get',
-                    dataType: 'text',
+                    dataType: 'json',
+                    contentType: "application/x-www-form-urlencoded",
                     url: '',
                     param : ["id=fid"],
                     dataFilter: null
                 },
+                //TODO keep leaf & keep parent
                 keep: {
                     leaf: false,
-                    parent: false
+                    parent: true
+                },
+                iconClass: {
+                    default: '',
+                    open: 'open',
+                    close: 'close',
+                    loading: 'loading',
+                    leaf: 'doc'
+                },
+                callback: {
+                    beforeAsync: null
                 }
             };
 
-            var options = this.options = $.extend(true,defaults, this.options);
+            var options = this.options = $.extend(true, defaults, this.options);
 
             if(!options.nodeTpl){
                 throw new Error('Tree Error: nodeTpl not specified');
@@ -2049,8 +2064,6 @@
             Tree.superClass.render.call(this);
             this.$element.addClass(this.options.classPrefix);
             var data = this._normalizeData(this.options.data);
-            data = this._initNode(data);
-            console.log(data);
             this._renderNodes(data, 1, this.$element);
         },
 
@@ -2059,17 +2072,11 @@
             data = this._normalizeData(data);
             this._renderNodes(data, 1, this.$element);
         },
-
         events: {
             'click [data-role="switcher"]': function(ev){
                 ev.stopPropagation();
                 var $node = $(ev.target).parent().parent();
-                //console.log($node);
-                console.log($(ev.target).parent().data('nodeData'));
                 var node = $(ev.target).parent().data('nodeData');
-                //this.expandNode(node);
-                //this.expandCollapseNode(node);
-                //this._toggleNode($node);
                 this.switchNode(node);
             },
             'click [data-role="item"]': function(ev){
@@ -2086,7 +2093,10 @@
             },
             'click [data-role="checkbox"]': function(ev){
                 ev.stopPropagation();
-                this._checkNode($(ev.target).parent())
+                var node = $(ev.target).parent().data('nodeData');
+                //this._checkNode($(ev.target).parent())
+                this.checkNode(node);
+
             }
         },
 
@@ -2095,7 +2105,7 @@
         },
 
         findNodeById: function(id){
-            return this.$('#etn' + id).data('nodeData');
+            return this.$('#' + this.options.idPrefix + id).data('nodeData');
         },
 
         getCheckedNodes: function(){
@@ -2104,9 +2114,16 @@
             })
         },
 
-        checkNode: function(node, checked, silent){
+        checkNode: function(node, checked, silent, inheritParent, inheritSon){
+            if (node.checkboxDisabled) return;
             var id = this._getNodeId(node);
-            this._checkNode(this.$('#etn' + id), checked, silent);
+            this._checkNode(this.$('#' + this.options.idPrefix + id), checked, silent);
+            if (inheritParent){
+                this.checkParentNode(node);
+            }
+            if (inheritSon){
+                this.checkSonNode(node);
+            }
         },
 
         checkAllNodes: function(checked, silent){
@@ -2118,12 +2135,12 @@
 
         selectNode: function(node, silent){
             var id = this._getNodeId(node);
-            this._selectNode(this.$('#etn' + id), silent);
+            this._selectNode(this.$('#' + this.options.idPrefix + id), silent);
         },
 
         setNode: function(node, attributes){
             var id = this._getNodeId(node);
-            var $node = this.$('#etn' + id);
+            var $node = this.$('#' + this.options.idPrefix + id);
             var nodeData = $node.data('nodeData');
             $.each(attributes, function(attr, val){
                 nodeData[attr] = val;
@@ -2132,41 +2149,77 @@
             $node.data('nodeData', nodeData);
         },
 
-        addNode: function(data, parentNode){
-            var $parentNode = this.$('#etn' + parentNode[this.options.idField]);
-            console.log('add')
-            if(!$parentNode[0]) return;
-            var depth = $parentNode.data('level') + 1;
+        addNode: function(data, parentNode, isSilent){
+            var $node = this.$('#' + this.options.idPrefix + this._getNodeId(parentNode));
+            parentNode = $node.data('nodeData');
+            if(!$node[0]) return;
+            var depth = $node.data('level') + 1;
 
-            $parentNode = $parentNode.parent();
-            this._expandParent($parentNode);
+            $parentNode = $node.parent();
 
+            var data = this._normalizeData(data);
             parentNode[this.options.childField] = $.isArray(parentNode[this.options.childField]) ? parentNode[this.options.childField].concat(data) : data;
-            //this._renderNodes([data], depth, $parentNode);
+            parentNode[this.options.childField].length > 0 && (parentNode.isParent = true);
             this._renderNodes(data, depth, $parentNode);
+            if (!isSilent){
+                this._expandParent($parentNode);
+                //set open style
+                var ico = this.getNodeIco(parentNode);
+                ico.attr('class', this._makeNodeIcoClass(parentNode));
+            }
+        },
+
+        hideNode: function(node){
+            var $treeNode = this._getTreeNode(node);
+            if ($treeNode !== false){
+                $treeNode.hide();
+                node.isHidden = true;
+            }
+        },
+
+        showNode: function(node){
+            var $treeNode = this._getTreeNode(node);
+            if ($treeNode !== false){
+                $treeNode.show();
+                node.isHidden = false;
+            }
+        },
+
+        _getTreeNode: function(node){
+            if (!node) return false;
+            return this.$('#' + this.options.idPrefix + this._getNodeId(node)).parent();
         },
 
         removeNode: function(node){
-            var id = this._getNodeId(node);
-            var $node = this.$('#etn' + id).parent();
-            if(!$node[0]) return;
-            if(!$node.siblings().length){
-                $node.parent().prev('[data-role="item"]').prepend('<b class="leaf"></b>')
-                .find('[data-role="switcher"]').remove();
+            var $treeNode = this._getTreeNode(node);
+            if($treeNode === false || !$treeNode[0]) return;
+
+            if (!this.options.keep.parent){
+                if(!$treeNode.siblings().length){
+                    $treeNode.parent().prev('[data-role="item"]').prepend('<b class="leaf"></b>')
+                    .find('[data-role="switcher"]').remove();
+                }
             }
-            $node.remove();
+            $treeNode.remove();
         },
 
         expandNode: function(node){
             var id = this._getNodeId(node);
-            var $node = this.$('#etn' + id).parent();
-            console.log($node)
+            var $node = this.$('#' + this.options.idPrefix + id).parent();
             if(!$node[0]) return;
-            this._toggleNode($node, 'expand');
-            var self = this;
-            $.each($node.parents('[data-role="node"]'), function(){
-                self._toggleNode($(this), 'expand')
-            })
+            node = this.$('#' + this.options.idPrefix + id).data('nodeData');
+            if (!this.canAsync(node)){
+
+                this._toggleNode($node, 'expand');
+                var self = this;
+                $.each($node.parents('[data-role="node"]'), function(){
+                    self._toggleNode($(this), 'expand');
+                })
+
+            } else if (this.options.async.enable){
+                this.asyncNode(node);
+            }
+
         },
 
         _getNodeId: function(node){
@@ -2178,23 +2231,27 @@
         },
 
         _checkNode: function($node, checked, silent){
-            var checkbox = $node.find('[data-role="checkbox"]');
-            if(checked !== undefined && checkbox.hasClass('checked') === checked){
+            var checkbox = $node.find('[data-role="checkbox"]'),
+                node = $node.data('nodeData');
+            if (checked !== undefined && node.checked === checked){
                 return;
             }
-            if(checked === undefined){
-                checked = !checkbox.hasClass('checked')
+            if (checked === undefined){
+                node.checked = !node.checked;
+            }else{
+                node.checked = checked;
             }
-            if(checked){
-                checkbox.addClass('checked');
-                if(!silent) this.trigger('checked', $node.data('nodeData'))
-            } else {
-                checkbox.removeClass('checked');
-                if(!silent) this.trigger('unChecked', $node.data('nodeData'))
-            }
-        },
 
-        _selectNode: function($node, silent){
+            if (node.checked){
+                if(!silent) this.trigger('checked', $node.data('nodeData'));
+            } else {
+                if(!silent) this.trigger('unChecked', $node.data('nodeData'));
+            }
+            node.halfCheck = false;
+            checkbox.attr('class', this._makeCheckboxClass(node));
+            if(!silent) this.trigger('afterCheck', $node.data('nodeData'));
+        },
+        _selectNode: function($node, silent){ 
             this.$('.highlight').removeClass('highlight');
             $node.addClass('highlight');
             if(!silent){
@@ -2209,8 +2266,12 @@
             }
             if(switcher && switcher === toggle_old) return;
             $node.removeClass(toggle_old).addClass(toggle_new)
-            /*.children('[data-role="item"]').find('.tree-switcher').removeClass('icon-tree-' + toggle_old)
-            .addClass('icon-tree-' + toggle_new);*/
+                .children('[data-role="item"]').find('.tree-switcher').removeClass('icon-tree-' + toggle_old)
+                .addClass('icon-tree-' + toggle_new);
+
+            var nodeData = $node.children('[data-role="item"]').data('nodeData');
+            nodeData.open = !nodeData.open;  //change open state where toggle class
+
         },
 
         _expandParent: function($node){
@@ -2238,50 +2299,48 @@
         },
 
         _renderNodes: function(nodes, depth, $parentNode){
-            var switcher = this.options.expandDepth === 0 || depth <= this.options.expandDepth ? 'expand' : 'collapse';
-            var $nodeList = $(this._nodeListTpl).appendTo($parentNode);
-
-            var switch_el = this._switchTpl.replace('{{switch_class}}', switcher);
-
+            var $nodeList = this._getNodeList($parentNode);
+            if (!$nodeList[0]){
+                $nodeList = $(this._nodeListTpl).appendTo($parentNode)
+            }
             var checkbox_el = this.options.checkbox ? this._checkboxTpl : '';
 
             var nodeTpl = this.options.nodeTpl,
                     that = this;
                       re = /\{\{([\w\-]+)\}\}/g;
             $.map(nodes, function(nodeData){
-
+                nodeData = that._initNode(nodeData, depth);
                 var node_el = nodeTpl.replace(re, function(match, p1){
                     return nodeData[p1];
                 })
+                var switcher = nodeData.open ? 'expand' : 'collapse';
+
                 var $node = $(that._nodeWrapTpl).appendTo($nodeList).addClass(switcher);
                 var $item = $node.children().append(Array(depth).join('<b></b>')).attr('data-level', depth);
-                that._bindNodeData($item, nodeData);
-                /*if(nodeData[that.options.childField]){
-                    //$item.append(switch_el);
-                    $item.append(that._switchTpl.replace('{{switch_class}}', nodeData.open ? 'expand' : 'collapse'));
-                } else {
-                    $item.prepend('<b class="leaf"></b>');
-                }*/
+
                 if(nodeData.isParent){
-                    //$item.append(switch_el);
-                    $item.append(that._switchTpl.replace('{{switch_class}}', nodeData.open ? 'expand' : 'collapse'));
+                    $item.append(that._switchTpl.replace('{{switch_class}}', switcher));
                 } else {
                     $item.prepend('<b class="leaf"></b>');
                 }
-                $item.append(checkbox_el + node_el);
 
-                if(nodeData[that.options.childField]){
+                $item.append(checkbox_el.replace('{{checkbox_class}}', that._makeCheckboxClass(nodeData)) + that._nodeIconTpl.replace('{{icon_class}}', that._makeNodeIcoClass(nodeData)) + node_el);
+                that._bindNodeData($item, nodeData);
+
+                if(nodeData[that.options.childField] && nodeData[that.options.childField].length > 0){
                     that._renderNodes(nodeData[that.options.childField], depth + 1, $node);
                 }
+                that.trigger('renderNode', nodeData);
             });
+            that.trigger('renderEnd', nodes);
         },
-
         _bindNodeData: function($node, data){
             if(this.options.dataProcess){
                 data = this.options.dataProcess(data);
             }
             var nodeData = {};
             if(this.options.nodeFields.length){
+                this.options.nodeFields = this.options.nodeFields.concat(this._defaultField);
                 $.map(this.options.nodeFields, function(field){
                     nodeData[field] = data[field];
                 })
@@ -2289,10 +2348,163 @@
                 nodeData = data;
             }
             if(this.options.idField){
-                $node.attr('id', 'etn' + data[this.options.idField]);
+                $node.attr('id',this.options.idPrefix + data[this.options.idField]);
             }
 
             $node.data('nodeData', nodeData);
+        },
+        _getNodeList: function($node){
+            return $node.children('[data-role="nodes"]');
+        },
+        _getCheckbox: function(node){
+            return this.$('#' + this.options.idPrefix + this._getNodeId(node)).find('[data-role="checkbox"]');
+        },
+        checkNodeInherit: function($node, checked, silent, inherit){
+
+        },
+        checkSonNode: function(node, checked){
+            if (!node || !node.isParent) return;
+            var childKey = this.options.childField;
+            if (checked == undefined){checked = node.checked}
+            if (!node[childKey]) return;
+            for (var i = 0, l = node[childKey].length; i < l; i++){
+                var childNode = node[childKey][i];
+                childNode.checked = checked;
+                childNode.halfCheck = false;
+
+                this._getCheckbox(childNode).attr('class', this._makeCheckboxClass(childNode));
+                this.checkSonNode(childNode, checked);
+            }
+        },
+        checkParentNode: function(node, checked){
+            if (!node) return;
+            var $parentNode = this.getParentNode(node);
+            if (!$parentNode[0]) return;
+
+            var parentNode = $parentNode.data('nodeData'),
+                parentCheck,parentHalfCheck = false;
+
+            if (!node.halfCheck){
+                var siblings = $('#' + this.options.idPrefix + this._getNodeId(node)).parent().siblings(),
+                    andState = orState = node.checked;
+
+                for (var i = 0, l = siblings.length; i < l; i++){
+                    var nodeData = $(siblings[i]).find('[data-role="item"]').data('nodeData');
+                    andState = andState && nodeData.checked;
+                    orState = orState || nodeData.checked;
+                    if ((andState == false && orState == true) || !!nodeData.halfCheck){
+                        parentHalfCheck = true;
+                        break;
+                    }
+                }
+            } else {
+                parentHalfCheck = true;
+            }
+            if (parentHalfCheck == true){
+                parentNode.checked = true;
+                parentNode.halfCheck = true;
+            }else if (orState == false){
+                parentNode.checked = false;
+                parentNode.halfCheck = false;
+            }else if (andState == true){
+                parentNode.checked = true;
+                parentNode.halfCheck = false;
+            }
+            //set checkbox class
+            $parentNode.find('[data-role="checkbox"]').attr('class', this._makeCheckboxClass(parentNode));
+            this.checkParentNode(parentNode, checked);
+        },
+        setCheckboxDisabled: function(node, disabled, inheritParent, inheritSon){
+            if (!node) return;
+            node.checkboxDisabled = disabled == undefined ? !node.checkboxDisabled : disabled;
+            this._getCheckbox(node).attr('class', this._makeCheckboxClass(node));
+            if (inheritParent) {
+                this.setParentDisabled(node, disabled, true);
+            }
+            if (inheritSon) {
+                this.setSonDisabled(node, disabled, true);
+            }
+
+        },
+        setParentDisabled: function(node, disabled, inherit){
+            if (!node) return;
+
+            if (inherit){
+                var parentNode = this.getParentNode(node).data('nodeData');
+                if (!parentNode) return;
+                if (parentNode.checkboxDisabled != disabled){
+                    parentNode.checkboxDisabled = disabled;
+                }
+                this._getCheckbox(parentNode).attr('class', this._makeCheckboxClass(parentNode));
+                this.setParentDisabled(parentNode, disabled, inherit);
+
+            }
+
+        },
+        setSonDisabled: function(node, disabled, inherit){
+            if (!node) return;
+            var childKey = this.options.childField;
+
+            if (node[childKey] && inherit) {
+                for (var i = 0, l = node[childKey].length; i < l; i++) {
+                    var sonNode = node[childKey][i];
+                    if (sonNode.checkboxDisabled != disabled) {
+                        sonNode.checkboxDisabled = disabled;
+                    }
+                    this._getCheckbox(sonNode).attr('class', this._makeCheckboxClass(sonNode));
+                    this.setSonDisabled(sonNode, disabled, inherit);
+                }
+            }
+        },
+        getNodes: function(){
+            var rootElement = this.$element.find('[data-level="1"]'),nodes = [];
+
+            for (var i = 0, l = rootElement.length; i < l; i++){
+                nodes.push($(rootElement[i]).data('nodeData'));
+            }
+            return nodes;
+        },
+        // checkState: full_true, full_false, part
+        _makeCheckboxClass: function(node){
+            var classPrefix = 'checked',
+                checkboxClass = ['icon', 'icon-checkbox'];
+
+            if (!!node.halfCheck){
+                checkboxClass.push(classPrefix + '_part');
+            } else {
+                if (!!node.checked){
+                    checkboxClass.push(classPrefix);
+                }
+                /*else {
+                    checkboxClass.push(classPrefix + 'full_false');
+                }*/
+            }
+            if (!!node.checkboxDisabled){
+                checkboxClass.push('disabled');
+            }
+            return checkboxClass.join(' ');
+
+        },
+        _makeNodeIcoClass: function(node){
+            var icoClass = ['ico'], nodeIconClass = this.options.iconClass;
+            if (!node.isAjaxing) {
+                icoClass[0] = (node.iconSkin ? node.iconSkin + '_' : '') + icoClass[0];
+                if (node.isParent){
+                    icoClass.push(node.open ? nodeIconClass.open : nodeIconClass.close);
+                } else {
+                    icoClass.push(nodeIconClass.leaf);
+                }
+            }
+
+            return nodeIconClass.default + ' ' + icoClass.join('_');
+        },
+        getNodeIco: function(node){
+            return $('#' + this.options.idPrefix + node[this.options.idField]).children('[data-role="node-icon"]');
+        },
+        getParentNode: function(node){
+            var id = this._getNodeId(node);
+            var $node = this.$('#' + this.options.idPrefix + id).parent();
+            return $node.parent().prev('[data-role="item"]');
         },
         asyncNode: function(node, isSilent, callback){
             if (node && !node.isParent) {
@@ -2302,37 +2514,44 @@
                 return false;
             }
 
-            console.log(node)
-            //TODO:check beforeAsync
+            if (typeof this.options.callback.beforeAsync == 'function'){
+                if (this.options.callback.beforeAsync.apply(this,node) === false) return false;
+            }
             if (node){
                 node.isAjaxing = true;
-                //set loading style
             }
-            var param = [],
+            var param = {},
                 that = this;
                 options = this.options;
 
             //get params of node
             for (var i = 0, l = options.async.param.length; i < l; i++){
                 var pKey = options.async.param[i].split("="), spKey = pKey;
-                console.log(pKey);
                 if (pKey.length > 1){
                     spKey = pKey[1];
                     pKey = pKey[0];
                 }
-                console.log(spKey, pKey);
                 param[spKey] = node[pKey] || '';
             }
-            console.log(param[spKey]);
+
+            //set loading class
+            var ico;
+            setTimeout(function(){
+                ico = that.getNodeIco(node);
+                ico.attr({'class': options.iconClass.default + ' ' + options.iconClass.loading});
+            },0)
+
             $.ajax({
-                cache: false,
+                contentType: options.async.contentType,
+                cache: options.async.cache === undefined,
                 type: options.async.type,
-                dataType: 'json',
+                dataType: options.async.dataType,
                 data: param,
-                url: 'data' + (param[spKey] > 30 ? 3 : param[spKey]) + '.json',
+                url: options.async.url,
                 error: function(){
                     that.trigger('asyncError');
                     node && (node.isAjaxing = null);
+                    ico.attr('class', that._makeNodeIcoClass(node));
                     //reset loading style
                 },
                 success: function(data){
@@ -2340,33 +2559,19 @@
                         node.isAjaxing = null;
                         node.async = true;
                     }
-                    console.log(data)
+                    if(!!that.options.dataLocator){
+                        data = that._call(that.options.dataLocator, data);
+                    }
+                    that.addNode(data, node, !!isSilent);
                     //reset loading style
-                    var newNodes = [];
-                    try {
-                        if (!data || data.length == 0){
-                            newNodes = [];
-                        }else if (typeof data == 'string'){
-                            newNodes = eval('(' + data + ')');
-                        }else{
-                            newNodes = data;
-                        }
-                    } catch(err) {
-                        newNodes = data;
-                    }
-                    if (newNodes && newNodes !== ''){
-                        if (typeof options.async.dataFilter == 'function'){
-                            newNodes = options.async.dataFilter.apply(that, [node, newNodes]);
-                        }
-                        that.addNode(newNodes, node);
-                    }
-                    that.trigger('asyncSuccess');
+                    ico.attr('class', that._makeNodeIcoClass(node));
+                    that.trigger('asyncSuccess',node);
                     //callback
                 }
             })
+            return true;
         },
         reAsyncChildNodes:function(nodeId, reloadType, isSilent){
-            console.log(this.options.async.enable);
             if (!this.options.async.enable) return;
             var node = this.findNodeById(nodeId);
 
@@ -2375,24 +2580,20 @@
             if (reloadType == 'refresh'){
                 var childField = this.options.childField;
                 this.removeChildNodes(node);
-                console.log('remove');
             }
             this.asyncNode(node, !!isSilent)
         },
         canAsync: function(node){
             var options = this.options;
-            return options.async.enable && node && node.isParent && !(node.async || (node[options.childField] && node[childField].length > 0));
+            return options.async.enable && node && node.isParent && !(node.async || (node[options.childField] && node[options.childField].length > 0));
         },
         switchNode: function(node){
             if (node.open || !this.canAsync(node)){
-                this.expandCollapseNode(node, !node.open);
+                this.expandCollapseNode(node, node.open);
             } else if (this.options.async.enable){
-                if (!this.asyncNode(node)){
-                    this.expandCollapseNode(node, !node.open);
-                    return;
-                }
+                this.asyncNode(node);
             } else if (node){
-                this.expandCollapseNode(node, !node.open);
+                this.expandCollapseNode(node, node.open);
             }
         },
         expandCollapseNode: function(node, openflag){
@@ -2401,58 +2602,66 @@
             if (!node) return;
 
             if (node.isParent){
-                var childrenNodes = node[childKey];
-                if ($.isArray(childrenNodes)){
-                    $.map(childrenNodes, function(childNode){
-                        that._toggleNode($('#etn' + that._getNodeId(childNode)).parent());
-                    })
-                }
+                var $node = $('#' + this.options.idPrefix + that._getNodeId(node))
+                that._toggleNode($node.parent(), !!openflag ? 'collapse' : 'expand');
 
-                that._toggleSwitcher($('#etn' + that._getNodeId(node)), node.open);
-                node.open = !node.open
+                //toggle folder style
+                var ico = that.getNodeIco(node);
+                ico.attr('class', that._makeNodeIcoClass(node));
             }
-        },
-        _toggleSwitcher: function($node, openflag){
-            console.log(openflag);
-            var toggle_old = 'collapse', toggle_new = 'expand';
-            if (openflag){
-                toggle_old = 'expand', toggle_new = 'collapse';
-            }
-            $node.find('.tree-switcher')
-                .removeClass('icon-tree-' + toggle_old)
-                .addClass('icon-tree-' + toggle_new);
         },
         removeChildNodes: function(node){
             if (!node) return;
+            this.expandCollapseNode(node, true);
             var childKey = this.options.childField;
             nodes = node[childKey];
-            console.log(nodes)
             if (!nodes) return;
             for (var i = 0, l = nodes.length; i < l; i++){
                 this.removeNode(nodes[i]);
             }
             node[childKey] = [];
-            //TODO:swith expand class & state
-            //check keep parent
-
+            //TODO:check keep parent
         },
-        _initNode: function(nodes, depth){
-            var that = this,
-                depth = depth || 1;
+        _call: function(fun, param){
+            return $.isFunction(fun) ? fun.call(this, param ? param : []) : (typeof fun == 'string' ? (param ? param[fun] : false) : false);
+        },
+        _initNode: function(node, depth){
+            var depth = depth || 1;
 
-            return $.map(nodes, function(node){
-                node.open = that.options.expandDepth === 0 || depth < that.options.expandDepth ? true : false;
-                if (node[that.options.childField] && node[that.options.childField].length > 0){
-                    node.isParent = true;
-                    node.async = true;
+            if (!!this.options.isOpenField){
+                node.open = this._call(this.options.isOpenField, node);
+            } else {
+                node.open = node.open === undefined ? (this.options.expandDepth === 0 || depth < this.options.expandDepth ? true : false) : node.open;
+            }
 
-                    that._initNode(node[that.options.childField], depth + 1);
-                }else{
-                    node.isParent = (typeof node.isParent == 'string') ? node.isParent === 'true' : !!node.isParent;
-                    node.async = !node.isParent;
+            if (node[this.options.childField] && node[this.options.childField].length > 0){
+                node.isParent = true;
+                node.async = true;
+            } else if (!!this.options.isLeafField) {
+                node.isParent = !this._call(this.options.isLeafField, node);
+                node.async = !node.isParent;
+            } else {
+                node.isParent = (typeof node.isParent == 'string') ? node.isParent === 'true' : !!node.isParent;
+                node.async = !node.isParent;
+            }
+
+            //check state
+            if (!!this.options.checkbox){
+                node.checked = !!node.checked;
+                node.halfCheck = !!node.halfCheck;
+                node.checkboxDisabled = !!node.checkboxDisabled;
+                if (!!this.options.isDisabledField){
+                    node.checkboxDisabled = this._call(this.options.isDisabledField, node);
+                } else {
+                    node.checkboxDisabled = !!node.checkboxDisabled;
                 }
-                return node;
-            })
+            }
+            return node;
+        },
+        destroy: function(){
+            delete this.options;
+            this.$element.empty();
+            Tree.superClass.destroy.call(this);
         }
     })
 
@@ -2702,7 +2911,6 @@
                 $node.remove();
                 return position;
             },
-
             getTextFromHeadToCaret: function () {
                 var range = window.getSelection().getRangeAt(0);
                 var selection = range.cloneRange();
