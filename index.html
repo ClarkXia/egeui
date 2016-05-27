@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>Document</title>
+</head>
+<style>
+	*{margin: 0;padding: 0}
+	#test{width: 100px;height: 100px;background-color: #abc}
+	#container{position: absolute;top:100px;left: 50px;width: 400px;height: 220px;}
+	#wrapper{height: 100%;overflow: hidden;}
+	.place-item{border:1px dashed #000;width: 100px;height: 100px;box-sizing: border-box;}
+	.drag{float:left;margin: 10px}
+	#drop1{width: 200px;height: 200px;border: 1px solid #000;position: absolute;left:50px;top:300px;}
+	#drop2{width: 200px;height: 200px;border: 1px solid #aaa;position: absolute;left: 300px;top:300px;}
+	#test2{width: 100px;height: 100px;background-color: #aaa;}
+	#test3{width: 100px;height: 100px;background-color: #bbb;}
+	.node-list{margin-left: 10px}
+	.tree-switcher{width: 10px;height: 10px;background: #000;display: inline-block;}
+	.expand{display: block;}
+	.collapse{display: none;}
+
+	.item b{display: inline-block;width: 5px;height: 5px;border-radius: 5px;background-color: #abc}
+	.item b.leaf{background-color: #ddd}
+	.icon-tree-collapse{width:0; height:0; border:5px solid; border-color:#fff #fff #fff #000;}
+	.icon-tree-expand{width:0; height:0; border:5px solid; border-color:#000 #fff #fff #fff;}
+</style>
+<body>
+<!--<p draggable="true">test</p>-->
+<div id="wrapper">
+	<div id="tree">
+
+	</div>
+	<!-- <div id="drop1" class="drop"></div>
+	<div id="drop2" class="drop"></div>
+	<div id="container">
+		<div id="test" class="drag"></div>
+		<div id="test2" class="drag"></div>
+		<div id="test3" class="drag"></div>
+	</div> -->
+</div>
+	<script src="src/jquery.js"></script>
+	<script src="src/egeui.js"></script>
+	<script>
+		/*new egeui.Drag().on('dragover',function(){
+			console.log('abc-over');
+		}).on('dragenter',function(){
+			console.log("abc-enter");
+		}).on('drop',function(){
+			console.log('abc-drop')
+		})*/
+
+
+		var dTree = new egeui.Tree({
+			element: '#tree',
+			data: {id:1, name:'all', parent_id:1, user_count:1, children:[
+				{id:2, name:'a', parent_id:2, user_count:1},
+				{id:3, name:'b', parent_id:2, user_count:1, children:[
+					{id:4, name:'c', parent_id:3, user_count:1},
+					{id:5, name:'d', parent_id:3, user_count:1, children:[
+						{id:6, name:'e', parent_id:5, user_count:1},
+						{id:7, name:'f', parent_id:5, user_count:1},
+						{id:8, name:'g', parent_id:5, user_count:1, children:[
+							{id:9, name:'h', parent_id:8, user_count:1},
+							{id:10, name:'i', parent_id:8, user_count:1},
+							{id:11, name:'j', parent_id:8, user_count:1}
+						]},
+					]}
+				]}
+			]},
+			async: {
+				dataFilter: function(parentNodem, childNodes){
+					for (var i = 0, l = childNodes.length; i < l; i++){
+						childNodes[i].isParent = true;
+					}
+					return childNodes;
+				}
+			},
+			nodeTpl: '<span class="name">{{name}}</span><span class="user_count">({{user_count}})</span>',
+			//nodeFields: ['id', 'name', 'parent_id', 'user_count'],
+			expandDepth: 0
+		}).on('nodeClick',function(data){
+			console.log(data);
+			//this.asyncNode(data);
+		})
+		//dTree.asyncNode({id:7, name:'f', parent_id:5, user_count:1});
+
+	</script>
+</body>
+</html>

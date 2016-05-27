@@ -300,10 +300,7 @@
                 doCopy : false,
                 revert : true,
                 edge : 0,
-                limitContainer : '',
-                onStartDrag: function(e){},
-                onDrag: function(e){},
-                onStopDrag:function(e){}
+                limitContainer : ''
             };
             this.options = $.extend({}, defaults, options);
             this.elem = $$(this.options.drag);
@@ -336,6 +333,7 @@
             };
             this.touch = false;
             this.moving = false;
+            this.disabled = false;
 
             this.setup();
         },
@@ -369,13 +367,25 @@
                 window.addEventListener('touchmove', moveEvent, false);
                 window.addEventListener('touchend', stopEvent, false);
                 window.addEventListener('touchcancel', stopEvent, false);
+                this.removeTouchEvent = function(){
+                    that.elem[0].removeEventListener('touchstart', startEvent, false);
+                    window.removeEventListener('touchmove', moveEvent, false);
+                    window.removeEventListener('touchend', stopEvent, false);
+                    window.removeEventListener('touchcancel', stopEvent, false);
+                }
             }
 
             that.elem.on('mousedown', startEvent);
             $(document).on('mousemove', moveEvent);
             $(document).on('mouseup', stopEvent);
+            this.removeMouseEvent = function(){
+                that.elem.off('mousedown', startEvent);
+                $(document).off('mousemove', moveEvent);
+                $(document).off('mouseup', stopEvent);
+            }
         },
         _dragStart: function(e){
+            if (this.disabled){return}
             var target = $(e.target),
                 posLeft = 0,posTop = 0,
                 position = target.position();
@@ -433,7 +443,7 @@
                 'top'  : posTop
             });
             this.moving = true;
-            this.options.onStartDrag.call(target, e);
+            this.trigger('dragstart');
         },
         _dragMove: function(e){
             if (this._checkArea(e) == false){return}
@@ -453,9 +463,10 @@
             // distance mouse moved between events
             mouse.distX = mouse.nowX - mouse.lastX;
             mouse.distY = mouse.nowY - mouse.lastY;
+            // direction mouse was moving
             mouse.lastDirX = mouse.dirX;
             mouse.lastDirY = mouse.dirY;
-            // direction mouse is now moving
+            // direction mouse is now moving (on both axis)
             mouse.dirX = mouse.distX === 0 ? 0 : mouse.distX > 0 ? 1 : -1;
             mouse.dirY = mouse.distY === 0 ? 0 : mouse.distY > 0 ? 1 : -1;
 
@@ -483,7 +494,7 @@
                     }
                 }
             })
-            this.options.onDrag.call(data.target, e);
+            this.trigger('ondrag');
         },
         _dragStop: function(e){
             this.moving = false;
@@ -509,7 +520,7 @@
                     dragContainer.remove();
                 }
             }
-            this.options.onStopDrag.call(this.dragData.target, e);
+            this.trigger('dragstop');
         },
         _copyPosition: function(obj){
             var cssProp = ['position', 'left', 'top', 'right', 'bottom', 'margin', 'padding', 'float'],
@@ -549,11 +560,8 @@
 
                 if (mouse.nowX > dropOffset.left && mouse.nowX < dropOffset.left + dropObj.outerWidth()
                         && mouse.nowY > dropOffset.top && mouse.nowY < dropOffset.top + dropObj.outerHeight()){
-                    //TODO store enter state
-                    //trigger dragenter and dragover
                     dropped = true;
                     $(this).data('entered',false);
-                    //return true;
                 }
             })
             return dropped;
@@ -572,6 +580,16 @@
                     l = e.pageX - offset.left;
                 return Math.min(t,r,b,l) > this.options.edge;
             }
+        },
+        enable: function(){
+            this.disabled = false;
+        },
+        disable: function(){
+            this.disabled = true;
+        },
+        removeEvent: function(){
+            this.touch && this.removeTouchEvent();
+            this.removeMouseEvent();
         }
     })
 
@@ -1999,10 +2017,22 @@
                 nodeFields: [],
                 idField: 'id',
                 classPrefix: 'egeui-tree',
-                expandDepth: 0
+                expandDepth: 0,
+                async: {
+                    enable: true,
+                    type: 'get',
+                    dataType: 'text',
+                    url: '',
+                    param : ["id=fid"],
+                    dataFilter: null
+                },
+                keep: {
+                    leaf: false,
+                    parent: false
+                }
             };
 
-            var options = this.options = $.extend(defaults, this.options);
+            var options = this.options = $.extend(true,defaults, this.options);
 
             if(!options.nodeTpl){
                 throw new Error('Tree Error: nodeTpl not specified');
@@ -2019,6 +2049,8 @@
             Tree.superClass.render.call(this);
             this.$element.addClass(this.options.classPrefix);
             var data = this._normalizeData(this.options.data);
+            data = this._initNode(data);
+            console.log(data);
             this._renderNodes(data, 1, this.$element);
         },
 
@@ -2032,10 +2064,17 @@
             'click [data-role="switcher"]': function(ev){
                 ev.stopPropagation();
                 var $node = $(ev.target).parent().parent();
-                this._toggleNode($node);
+                //console.log($node);
+                console.log($(ev.target).parent().data('nodeData'));
+                var node = $(ev.target).parent().data('nodeData');
+                //this.expandNode(node);
+                //this.expandCollapseNode(node);
+                //this._toggleNode($node);
+                this.switchNode(node);
             },
             'click [data-role="item"]': function(ev){
                 this._selectNode($(ev.currentTarget));
+                this.trigger('nodeClick', this.getSelectedNode());
             },
             'mouseenter [data-role="item"]': function(ev){
                 var $node = $(ev.currentTarget);
@@ -2095,11 +2134,16 @@
 
         addNode: function(data, parentNode){
             var $parentNode = this.$('#etn' + parentNode[this.options.idField]);
+            console.log('add')
             if(!$parentNode[0]) return;
             var depth = $parentNode.data('level') + 1;
+
             $parentNode = $parentNode.parent();
             this._expandParent($parentNode);
-            this._renderNodes([data], depth, $parentNode);
+
+            parentNode[this.options.childField] = $.isArray(parentNode[this.options.childField]) ? parentNode[this.options.childField].concat(data) : data;
+            //this._renderNodes([data], depth, $parentNode);
+            this._renderNodes(data, depth, $parentNode);
         },
 
         removeNode: function(node){
@@ -2116,6 +2160,7 @@
         expandNode: function(node){
             var id = this._getNodeId(node);
             var $node = this.$('#etn' + id).parent();
+            console.log($node)
             if(!$node[0]) return;
             this._toggleNode($node, 'expand');
             var self = this;
@@ -2164,8 +2209,8 @@
             }
             if(switcher && switcher === toggle_old) return;
             $node.removeClass(toggle_old).addClass(toggle_new)
-            .children('[data-role="item"]').find('.tree-switcher').removeClass('icon-tree-' + toggle_old)
-            .addClass('icon-tree-' + toggle_new);
+            /*.children('[data-role="item"]').find('.tree-switcher').removeClass('icon-tree-' + toggle_old)
+            .addClass('icon-tree-' + toggle_new);*/
         },
 
         _expandParent: function($node){
@@ -2194,7 +2239,6 @@
 
         _renderNodes: function(nodes, depth, $parentNode){
             var switcher = this.options.expandDepth === 0 || depth <= this.options.expandDepth ? 'expand' : 'collapse';
-
             var $nodeList = $(this._nodeListTpl).appendTo($parentNode);
 
             var switch_el = this._switchTpl.replace('{{switch_class}}', switcher);
@@ -2212,8 +2256,15 @@
                 var $node = $(that._nodeWrapTpl).appendTo($nodeList).addClass(switcher);
                 var $item = $node.children().append(Array(depth).join('<b></b>')).attr('data-level', depth);
                 that._bindNodeData($item, nodeData);
-                if(nodeData[that.options.childField]){
-                    $item.append(switch_el);
+                /*if(nodeData[that.options.childField]){
+                    //$item.append(switch_el);
+                    $item.append(that._switchTpl.replace('{{switch_class}}', nodeData.open ? 'expand' : 'collapse'));
+                } else {
+                    $item.prepend('<b class="leaf"></b>');
+                }*/
+                if(nodeData.isParent){
+                    //$item.append(switch_el);
+                    $item.append(that._switchTpl.replace('{{switch_class}}', nodeData.open ? 'expand' : 'collapse'));
                 } else {
                     $item.prepend('<b class="leaf"></b>');
                 }
@@ -2240,7 +2291,168 @@
             if(this.options.idField){
                 $node.attr('id', 'etn' + data[this.options.idField]);
             }
+
             $node.data('nodeData', nodeData);
+        },
+        asyncNode: function(node, isSilent, callback){
+            if (node && !node.isParent) {
+                //callback
+                return false;
+            }else if (node && node.isAjaxing){
+                return false;
+            }
+
+            console.log(node)
+            //TODO:check beforeAsync
+            if (node){
+                node.isAjaxing = true;
+                //set loading style
+            }
+            var param = [],
+                that = this;
+                options = this.options;
+
+            //get params of node
+            for (var i = 0, l = options.async.param.length; i < l; i++){
+                var pKey = options.async.param[i].split("="), spKey = pKey;
+                console.log(pKey);
+                if (pKey.length > 1){
+                    spKey = pKey[1];
+                    pKey = pKey[0];
+                }
+                console.log(spKey, pKey);
+                param[spKey] = node[pKey] || '';
+            }
+            console.log(param[spKey]);
+            $.ajax({
+                cache: false,
+                type: options.async.type,
+                dataType: 'json',
+                data: param,
+                url: 'data' + (param[spKey] > 30 ? 3 : param[spKey]) + '.json',
+                error: function(){
+                    that.trigger('asyncError');
+                    node && (node.isAjaxing = null);
+                    //reset loading style
+                },
+                success: function(data){
+                    if (node) {
+                        node.isAjaxing = null;
+                        node.async = true;
+                    }
+                    console.log(data)
+                    //reset loading style
+                    var newNodes = [];
+                    try {
+                        if (!data || data.length == 0){
+                            newNodes = [];
+                        }else if (typeof data == 'string'){
+                            newNodes = eval('(' + data + ')');
+                        }else{
+                            newNodes = data;
+                        }
+                    } catch(err) {
+                        newNodes = data;
+                    }
+                    if (newNodes && newNodes !== ''){
+                        if (typeof options.async.dataFilter == 'function'){
+                            newNodes = options.async.dataFilter.apply(that, [node, newNodes]);
+                        }
+                        that.addNode(newNodes, node);
+                    }
+                    that.trigger('asyncSuccess');
+                    //callback
+                }
+            })
+        },
+        reAsyncChildNodes:function(nodeId, reloadType, isSilent){
+            console.log(this.options.async.enable);
+            if (!this.options.async.enable) return;
+            var node = this.findNodeById(nodeId);
+
+            if (!node) return;
+
+            if (reloadType == 'refresh'){
+                var childField = this.options.childField;
+                this.removeChildNodes(node);
+                console.log('remove');
+            }
+            this.asyncNode(node, !!isSilent)
+        },
+        canAsync: function(node){
+            var options = this.options;
+            return options.async.enable && node && node.isParent && !(node.async || (node[options.childField] && node[childField].length > 0));
+        },
+        switchNode: function(node){
+            if (node.open || !this.canAsync(node)){
+                this.expandCollapseNode(node, !node.open);
+            } else if (this.options.async.enable){
+                if (!this.asyncNode(node)){
+                    this.expandCollapseNode(node, !node.open);
+                    return;
+                }
+            } else if (node){
+                this.expandCollapseNode(node, !node.open);
+            }
+        },
+        expandCollapseNode: function(node, openflag){
+            var childKey = this.options.childField,
+                that = this;
+            if (!node) return;
+
+            if (node.isParent){
+                var childrenNodes = node[childKey];
+                if ($.isArray(childrenNodes)){
+                    $.map(childrenNodes, function(childNode){
+                        that._toggleNode($('#etn' + that._getNodeId(childNode)).parent());
+                    })
+                }
+
+                that._toggleSwitcher($('#etn' + that._getNodeId(node)), node.open);
+                node.open = !node.open
+            }
+        },
+        _toggleSwitcher: function($node, openflag){
+            console.log(openflag);
+            var toggle_old = 'collapse', toggle_new = 'expand';
+            if (openflag){
+                toggle_old = 'expand', toggle_new = 'collapse';
+            }
+            $node.find('.tree-switcher')
+                .removeClass('icon-tree-' + toggle_old)
+                .addClass('icon-tree-' + toggle_new);
+        },
+        removeChildNodes: function(node){
+            if (!node) return;
+            var childKey = this.options.childField;
+            nodes = node[childKey];
+            console.log(nodes)
+            if (!nodes) return;
+            for (var i = 0, l = nodes.length; i < l; i++){
+                this.removeNode(nodes[i]);
+            }
+            node[childKey] = [];
+            //TODO:swith expand class & state
+            //check keep parent
+
+        },
+        _initNode: function(nodes, depth){
+            var that = this,
+                depth = depth || 1;
+
+            return $.map(nodes, function(node){
+                node.open = that.options.expandDepth === 0 || depth < that.options.expandDepth ? true : false;
+                if (node[that.options.childField] && node[that.options.childField].length > 0){
+                    node.isParent = true;
+                    node.async = true;
+
+                    that._initNode(node[that.options.childField], depth + 1);
+                }else{
+                    node.isParent = (typeof node.isParent == 'string') ? node.isParent === 'true' : !!node.isParent;
+                    node.async = !node.isParent;
+                }
+                return node;
+            })
         }
     })
 
